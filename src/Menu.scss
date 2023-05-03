@@ -1,0 +1,34 @@
+.nested-menu {
+  position: relative;
+  width: 600px;
+
+  .inner {
+    position: relative;
+    display: flex;
+    width: 200px;
+    left: 200px;
+    border: 1px solid red;
+  }
+
+  ul {
+    flex: 0 0 200px;
+    border: 1px solid purple;
+
+  }
+
+  .sliding-window {
+    display: flex;
+    position: relative;
+    width: 600px;
+    transition: transform 2.3s ease-in-out;
+    transform: translateX(-200px);
+  }
+
+  &.transitioning.right .sliding-window {
+    transform: translateX(-400px);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
