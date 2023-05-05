@@ -20,15 +20,37 @@
     display: flex;
     position: relative;
     width: 600px;
-    transition: transform 2.3s ease-in-out;
     transform: translateX(-200px);
   }
 
-  &.transitioning.right .sliding-window {
-    transform: translateX(-400px);
+  &.animating.forward .sliding-window {
+    animation: slideForward 1s both;
   }
+
+  &.animating.backward .sliding-window {
+    animation: slideBackward 1s both;
+  }
+
 }
 
 * {
   box-sizing: border-box;
+}
+
+@keyframes slideForward {
+  0% {
+    transform: translateX(-200px);
+  }
+  100% {
+    transform: translateX(-400px);
+  }
+}
+
+@keyframes slideBackward {
+  0% {
+    transform: translateX(-200px);
+  }
+  100% {
+    transform: translateX(0px);
+  }
 }

@@ -2,16 +2,43 @@ import { MenuItem, MenuTree } from './types'
 import './Menu.scss'
 import { useRef, useState } from 'react'
 
-function MenuList ({ menuTree, setActiveMenuItem }: { menuTree: MenuTree, setActiveMenuItem: (menuItem: string | null) => void }) {
+const ROOT = '__ROOT__'
+
+type MenuListProps = { 
+  menuTree: MenuTree, 
+  setActiveMenuItem: (menuItem: string | null, direction: 'forward' | 'backward', callback?: () => void) => void, 
+  indexedMenu: Array<MenuItem>
+}
+
+function MenuList ({ menuTree, setActiveMenuItem, indexedMenu }: MenuListProps) {
+  const parentId = menuTree[0]?.parentId
+  const grandParentId = parentId ? indexedMenu.find(menuItem => menuItem.id === parentId)?.parentId : null
+
   return (
-    <ul>
+    <ul className='list-group'>
+      {grandParentId && parentId && parentId !== ROOT ? (
+        <li className='list-group-item'><button onClick={() => {
+          setActiveMenuItem(grandParentId, 'backward')
+        }}>Back</button></li>        
+      ) : null}
       {menuTree.map(menuItem => (
-        <li key={JSON.stringify(menuItem)}>
+        <li className='list-group-item' key={JSON.stringify(menuItem)}>
+
           <button onClick={() => {
-            setActiveMenuItem(menuItem.id)
+              setActiveMenuItem(menuItem.id, 'forward', () => {
+                location = menuItem.href
+              })
           }}>
             {menuItem.icon} {menuItem.title}
           </button>
+
+          {menuItem.children?.length ? (
+            <button onClick={() => {
+              setActiveMenuItem(menuItem.id, 'forward')
+            }}>
+              ►
+            </button>            
+          ) : null}
         </li>
       ))}
     </ul>
@@ -19,44 +46,44 @@ function MenuList ({ menuTree, setActiveMenuItem }: { menuTree: MenuTree, setAct
 }
 
 const flattenTree = (menuTree: MenuTree) => {
-  const items: Array<{ menuItem: MenuItem, parentId: string | null }> = []
+  const items: Array<MenuItem> = []
 
   const flattenLevel = (menuLevel: MenuTree, parentId : string | null) => {
     for (const menuItem of menuLevel) {
-      items.push({
-        menuItem,
-        parentId: parentId
-      })
-
+      items.push({ ...menuItem, parentId })
       if (menuItem.children) flattenLevel(menuItem.children, menuItem.id)
     }  
   }
 
-  flattenLevel(menuTree, null)
+  flattenLevel(menuTree, ROOT)
 
   return items
 }
 
 export function Menu ({ menuTree }: { menuTree: MenuTree }) {
-
   const indexedMenu = flattenTree(menuTree)
+  const [isAnimating, setIsAnimating] = useState(false)
 
-  const [isTransitioning, setIsTransitioning] = useState(false)
-  const [activeMenuItemId, setActiveMenuItem] = useState<string | null>(null)
+  const path = location.pathname.substring(1)
+  const defaultActiveMenuItemId = path && indexedMenu.find(menuItem => menuItem.href === path) ? path : ROOT
+
+  const [activeMenuItemId, setActiveMenuItem] = useState<string | null>(defaultActiveMenuItemId)
+  const [previousMenuItemId, setPreviousMenuItem] = useState<string | null>(ROOT)
   const [direction, setDirection] = useState('')
   const slidingWindow = useRef<HTMLDivElement>(null)
 
-  const menuItemClick = (nextActiveMenuItemId: string | null) => {
-    slidingWindow.current?.addEventListener('transitionend', () => {
-      setIsTransitioning(false)
+  const menuItemClick = (nextActiveMenuItemId: string | null, direction: 'forward' | 'backward', callback?: () => void) => {
+    if (isAnimating) return
+
+    slidingWindow.current?.addEventListener('animationend', () => {
+      setIsAnimating(false)
+      if (callback) callback()
     }, { once: true })
 
-    setIsTransitioning(true)
+    setIsAnimating(true)
+    setPreviousMenuItem(activeMenuItemId)
     setActiveMenuItem(nextActiveMenuItemId)
     
-    const firstMetaMenuItem = indexedMenu.find(metaMenuItem => metaMenuItem.menuItem.id === activeMenuItemId)
-    const secondMetaMenuItem = indexedMenu.find(metaMenuItem => metaMenuItem.menuItem.id === nextActiveMenuItemId)
-    const direction = firstMetaMenuItem?.parentId === secondMetaMenuItem?.menuItem.id ? 'left' : 'right'
     setDirection(direction)
   }
 
@@ -64,31 +91,30 @@ export function Menu ({ menuTree }: { menuTree: MenuTree }) {
   const parentMenuTree: Array<MenuItem> = []
   const childMenuTree: Array<MenuItem> = []
 
-  /**
-   * Before the transition
-   */
-  if (isTransitioning) {
-    childMenuTree.push(...indexedMenu.filter(metaMenuItem => metaMenuItem.parentId === activeMenuItemId).map(metaMenuItem => metaMenuItem.menuItem))
-    const parentMetaMenuItem = indexedMenu.find(metaMenuItem => metaMenuItem.menuItem.id === activeMenuItemId)
-    currentMenuTree.push(...indexedMenu.filter(metaMenuItem => metaMenuItem.parentId === parentMetaMenuItem?.parentId).map(metaMenuItem => metaMenuItem.menuItem))
-  }
+  const activeColumnItems = indexedMenu.filter(menuItem => menuItem?.parentId === activeMenuItemId)
+  const parentMenuItem = indexedMenu.find(menuItem => menuItem.id === activeMenuItemId)
+  const activeChildColumnItems = indexedMenu.filter(menuItem => menuItem?.parentId === parentMenuItem?.parentId)
 
-  /**
-   * After the transition
-   */
-  else {
-    currentMenuTree.push(...indexedMenu.filter(metaMenuItem => metaMenuItem.parentId === activeMenuItemId).map(metaMenuItem => metaMenuItem.menuItem))
-    const parentMetaMenuItem = indexedMenu.find(metaMenuItem => metaMenuItem.menuItem.id === activeMenuItemId)
-    parentMenuTree.push(...indexedMenu.filter(metaMenuItem => metaMenuItem.parentId === parentMetaMenuItem?.parentId).map(metaMenuItem => metaMenuItem.menuItem))
+  if (!isAnimating) {
+    currentMenuTree.push(...activeColumnItems)
+    parentMenuTree.push(...activeChildColumnItems)
+  }
+  else if (isAnimating && direction === 'forward') {
+    childMenuTree.push(...activeColumnItems)
+    currentMenuTree.push(...activeChildColumnItems)
+  }
+  else if (isAnimating && direction === 'backward') {
+    parentMenuTree.push(...activeColumnItems)
+    currentMenuTree.push(...indexedMenu.filter(menuItem => menuItem.parentId === previousMenuItemId))
   }
 
   return (
-    <div className={`nested-menu ${isTransitioning ? 'transitioning' : ''} ${direction ?? ''}`}>
+    <div className={`nested-menu ${isAnimating ? 'animating' : ''} ${direction ?? ''}`}>
       <div className='inner'>
         <div ref={slidingWindow} className='sliding-window'>
-          <MenuList setActiveMenuItem={menuItemClick} menuTree={parentMenuTree} />
-          <MenuList setActiveMenuItem={menuItemClick} menuTree={currentMenuTree} />
-          <MenuList setActiveMenuItem={menuItemClick} menuTree={childMenuTree} />
+          <MenuList setActiveMenuItem={menuItemClick} menuTree={parentMenuTree} indexedMenu={indexedMenu} />
+          <MenuList setActiveMenuItem={menuItemClick} menuTree={currentMenuTree} indexedMenu={indexedMenu} />
+          <MenuList setActiveMenuItem={menuItemClick} menuTree={childMenuTree} indexedMenu={indexedMenu} />
         </div>
       </div>
     </div>
